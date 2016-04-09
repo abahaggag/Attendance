@@ -49,7 +49,7 @@ namespace JISR_V1.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("server=.\\smsql;uid=sa;pwd=123;database=eSSLSmartOffice")]
+        [global::System.Configuration.DefaultSettingValueAttribute("server=.\\mssql;uid=sa;pwd=123;database=eSSLSmartOffice")]
         public string ConnectionString {
             get {
                 return ((string)(this["ConnectionString"]));

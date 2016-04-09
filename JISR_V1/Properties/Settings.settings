@@ -9,7 +9,7 @@
       <Value Profile="(Default)">varun</Value>
     </Setting>
     <Setting Name="ConnectionString" Type="System.String" Scope="User">
-      <Value Profile="(Default)">server=.\smsql;uid=sa;pwd=123;database=eSSLSmartOffice</Value>
+      <Value Profile="(Default)">server=.\mssql;uid=sa;pwd=123;database=eSSLSmartOffice</Value>
     </Setting>
     <Setting Name="BaseAddress" Type="System.String" Scope="User">
       <Value Profile="(Default)">http://api.dev.arbab.clicksandbox.com/v1/</Value>

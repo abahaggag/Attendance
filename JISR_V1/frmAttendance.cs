@@ -80,13 +80,16 @@ namespace JISR_V1
             DateTime today = Convert.ToDateTime(date.ToString(new CultureInfo("en-US")));
             string onlyIfFirstTime = "";
 
-            if (!this.isFirstCalled)
+            if (this.isFirstCalled)
             {
-                onlyIfFirstTime = String.Format("and  logDate between {0} and {1}", today.AddMinutes(-5), today);
                 this.isFirstCalled = false;
             }
+            else
+            {
+                onlyIfFirstTime = String.Format("and  logDate between '{0}' and '{1}'", today.AddMinutes(-1), today);
+            }
 
-            return String.Format("cast(logDate as date) = {0} {1}", today.ToShortDateString(), onlyIfFirstTime);
+            return String.Format("cast(logDate as date) = '{0}' {1}", today.ToShortDateString(), onlyIfFirstTime);
         }
         #endregion
 
@@ -274,6 +277,7 @@ namespace JISR_V1
             }
 
             // fill data in dataset
+            attendanceDataset.Reset();
             adapter.Fill(attendanceDataset, tableName);
 
             // check if there are data need to be sent to api
@@ -295,15 +299,48 @@ namespace JISR_V1
         {
             // map attendance logs as needed in api params
             List<Record> logsList = MapLogsToApiParams(AttendanceLogs);
-            
+            dynamic logsListWarper = new { record = logsList };
+
             // serialize logs to json
+            var logsSerialized = await JsonConvert.SerializeObjectAsync(logsListWarper);
 
             // send logs to api
+            using (var client = new HttpClient())
+            {
+                client.BaseAddress = new Uri(this.baseAddress);
+                var content = new StringContent(logsSerialized, Encoding.UTF8, "application/json");
+                var result = await client.PostAsync("device_attendances?access_token=" + this.accessToken, content);
+
+                var attendanceJsonResult = await result.Content.ReadAsStringAsync();
+                var attendanceDic = JsonConvert.DeserializeObject<Dictionary<string, string>>(attendanceJsonResult);
+
+                if (attendanceDic["success"] == "true")
+                {
+                    lbxNotifications.Items.Add("Data sent successfully. records_updated: " + attendanceDic["records_updated"]);
+                    this.isLoggedIn = true;
+                }
+                else
+                {
+                    lbxNotifications.Items.Add(attendanceDic["error"]);
+                }
+            }
         }
 
         private List<Record> MapLogsToApiParams(DataTable AttendanceLogs)
         {
             List<Record> list = new List<Record>();
+
+            foreach (DataRow row in AttendanceLogs.Rows)
+            {
+                list.Add(
+                    new Record {
+                        id = Convert.ToInt32(row["EmployeeCode"]),
+                        day = Convert.ToDateTime(row["LogDate"]).ToString("MM/dd/yyyy"),
+                        time = Convert.ToDateTime(row["LogDate"]).ToString("HH:mm"),
+                        direction = row["Direction"].ToString()
+                    }
+                );
+            }
 
             return list;
         }
