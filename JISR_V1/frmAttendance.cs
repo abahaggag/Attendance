@@ -11,14 +11,13 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Xml.Linq;
 
 namespace JISR_V1
 {
     public partial class frmAttendance : Form
     {
-        #region private data members
-        private string accessToken;
-        private string baseAddress;
+        #region Private data members
         private bool isLoggedIn;
         private bool isFirstCalled;
         private DateTime? lastSavedLogDate;
@@ -26,17 +25,15 @@ namespace JISR_V1
         private SqlConnection connection = null;
         private SqlDataAdapter adapter = null;
         private DataSet attendanceDataset = null;
-        private const string tableName = "attendance"; 
+        private const string tableName = "attendance";
         #endregion
 
-        #region constructor and form_load
+        #region Constructor and form_load
         public frmAttendance()
         {
             InitializeComponent();
 
             // Initialize Members
-            this.accessToken = Properties.Settings.Default.AccessToken;
-            this.baseAddress = Properties.Settings.Default.BaseAddress;
             this.isLoggedIn = false;
             this.isFirstCalled = true;
             this.lastSavedLogDate = null;
@@ -44,13 +41,16 @@ namespace JISR_V1
 
         private void frmAttendance_Load(object sender, EventArgs e)
         {
+            // Load Configurations from xml file
+            Configurations.Load();
+
             // Check if saved AccessToken is valid
             PingAPI();
 
             // Initialize Connection and DataSet
             if (connection == null) connection = GetSqlConnection();
             if (attendanceDataset == null) attendanceDataset = new DataSet();
-        } 
+        }
         #endregion
 
         #region SQL Connection and Query
@@ -58,7 +58,7 @@ namespace JISR_V1
         {
             if (connection == null)
             {
-                return new SqlConnection(Properties.Settings.Default.ConnectionString);
+                return new SqlConnection(Configurations.ConnectionString);
             }
             else
             {
@@ -95,7 +95,7 @@ namespace JISR_V1
                 //onlyIfFirstTime = String.Format("and  logDate between '{0}' and '{1}'", today.AddMinutes(-1), today);
                 if (this.lastSavedLogDate != null)
                 {
-                    onlyIfFirstTime = String.Format("and  logDate > '{0}'", this.lastSavedLogDate.Value); 
+                    onlyIfFirstTime = String.Format("and  logDate > '{0}'", this.lastSavedLogDate.Value);
                 }
             }
 
@@ -170,9 +170,9 @@ namespace JISR_V1
                 // ping api
                 using (var client = new HttpClient())
                 {
-                    client.BaseAddress = new Uri(this.baseAddress);
+                    client.BaseAddress = new Uri(Configurations.BaseAddress);
 
-                    using (var pingResponse = await client.GetAsync(String.Format("ping?access_token={0}", this.accessToken)))
+                    using (var pingResponse = await client.GetAsync(String.Format("ping?access_token={0}", Configurations.AccessToken)))
                     {
                         var pingJsonResult = await pingResponse.Content.ReadAsStringAsync();
                         Dictionary<string, string> pingDic = JsonConvert.DeserializeObject<Dictionary<string, string>>(pingJsonResult);
@@ -203,13 +203,13 @@ namespace JISR_V1
                 // login
                 using (var client = new HttpClient())
                 {
-                    client.BaseAddress = new Uri(this.baseAddress);
+                    client.BaseAddress = new Uri(Configurations.BaseAddress);
 
                     var serializedLogin = JsonConvert.SerializeObject(
                         new Login
                         {
-                            login = Properties.Settings.Default.Login,
-                            password = Properties.Settings.Default.Password
+                            login = Configurations.Login,
+                            password = Configurations.Password
                         }
                     );
 
@@ -220,9 +220,8 @@ namespace JISR_V1
 
                     if (loginDic["success"] == "true")
                     {
-                        this.accessToken = loginDic["access_token"];
-                        Properties.Settings.Default.AccessToken = loginDic["access_token"];
-                        Properties.Settings.Default.Save();
+                        Configurations.AccessToken = loginDic["access_token"];
+                        Configurations.Save("AccessToken", loginDic["access_token"]);
 
                         lbxNotifications.Items.Add(loginDic["message"]);
                         this.isLoggedIn = true;
@@ -246,9 +245,9 @@ namespace JISR_V1
             {
                 using (var client = new HttpClient())
                 {
-                    client.BaseAddress = new Uri(this.baseAddress);
+                    client.BaseAddress = new Uri(Configurations.BaseAddress);
 
-                    var result = await client.DeleteAsync(String.Format("sessions?access_token={0}", this.accessToken));
+                    var result = await client.DeleteAsync(String.Format("sessions?access_token={0}", Configurations.AccessToken));
                     var logoutJsonResult = await result.Content.ReadAsStringAsync();
                     Dictionary<string, string> logoutDic = JsonConvert.DeserializeObject<Dictionary<string, string>>(logoutJsonResult);
 
@@ -269,7 +268,7 @@ namespace JISR_V1
 
         #endregion
 
-        #region timer_tick for sending logData to api
+        #region Timer_tick for sending logData to api
         private void timer_Tick(object sender, EventArgs e)
         {
             // setup sql_data_adapter and get data
@@ -319,9 +318,9 @@ namespace JISR_V1
             // send logs to api
             using (var client = new HttpClient())
             {
-                client.BaseAddress = new Uri(this.baseAddress);
+                client.BaseAddress = new Uri(Configurations.BaseAddress);
                 var content = new StringContent(logsSerialized, Encoding.UTF8, "application/json");
-                var result = await client.PostAsync("device_attendances?access_token=" + this.accessToken, content);
+                var result = await client.PostAsync("device_attendances?access_token=" + Configurations.AccessToken, content);
 
                 var attendanceJsonResult = await result.Content.ReadAsStringAsync();
                 var attendanceDic = JsonConvert.DeserializeObject<Dictionary<string, string>>(attendanceJsonResult);
@@ -356,6 +355,13 @@ namespace JISR_V1
             }
 
             return list;
+        }
+        #endregion
+
+        #region Load Configuration Button Click
+        private void btnLoadConfigurations_Click(object sender, EventArgs e)
+        {
+            Configurations.Load();
         } 
         #endregion
     }
@@ -374,6 +380,47 @@ namespace JISR_V1
         public string day { get; set; }
         public string time { get; set; }
         public string direction { get; set; }
-    } 
+    }
+
+    public static class Configurations
+    {
+        public static string AccessToken { get; set; }
+        public static string ConnectionString { get; set; }
+        public static string BaseAddress { get; set; }
+        public static string Login { get; set; }
+        public static string Password { get; set; }
+        private static XElement configurations { get; set; }
+        public static void Load()
+        {
+            try
+            {
+                configurations = XElement.Load("configurations.xml");
+                XElement attendance = configurations.Elements().First();
+
+                AccessToken = attendance.Element("AccessToken").Value;
+                BaseAddress = attendance.Element("BaseAddress").Value;
+                ConnectionString = attendance.Element("ConnectionString").Value;
+                Login = attendance.Element("Login").Value;
+                Password = attendance.Element("Password").Value;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
+        public static void Save(string Node, string Value)
+        {
+            try
+            {
+                XElement attendance = configurations.Elements().First();
+                attendance.SetElementValue(Node, Value);
+                configurations.Save("configurations.xml");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
+    }
     #endregion
 }
