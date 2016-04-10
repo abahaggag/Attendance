@@ -16,16 +16,20 @@ namespace JISR_V1
 {
     public partial class frmAttendance : Form
     {
+        #region private data members
         private string accessToken;
         private string baseAddress;
         private bool isLoggedIn;
         private bool isFirstCalled;
+        private DateTime? lastSavedLogDate;
 
         private SqlConnection connection = null;
         private SqlDataAdapter adapter = null;
         private DataSet attendanceDataset = null;
-        private const string tableName = "atendance";
+        private const string tableName = "attendance"; 
+        #endregion
 
+        #region constructor and form_load
         public frmAttendance()
         {
             InitializeComponent();
@@ -35,6 +39,7 @@ namespace JISR_V1
             this.baseAddress = Properties.Settings.Default.BaseAddress;
             this.isLoggedIn = false;
             this.isFirstCalled = true;
+            this.lastSavedLogDate = null;
         }
 
         private void frmAttendance_Load(object sender, EventArgs e)
@@ -45,7 +50,8 @@ namespace JISR_V1
             // Initialize Connection and DataSet
             if (connection == null) connection = GetSqlConnection();
             if (attendanceDataset == null) attendanceDataset = new DataSet();
-        }
+        } 
+        #endregion
 
         #region SQL Connection and Query
         private SqlConnection GetSqlConnection()
@@ -60,19 +66,19 @@ namespace JISR_V1
             }
         }
 
+        private string GetSQL()
+        {
+            string tbl = GetTableName(DateTime.Now, "DeviceLogs");
+            string sql = String.Format("select DeviceLogId,EmployeeCode,LogDate,Direction from {0},Employees where {0}.UserId=Employees.EmployeeId and {1} order by DeviceLogId", tbl, GetWhere(DateTime.Now));
+            return sql;
+        }
+
         private string GetTableName(DateTime date, string tbl)
         {
             date = Convert.ToDateTime(date.ToString(new CultureInfo("en-US")));
             int month = date.Month;
             int year = date.Year;
             return String.Format("{0}_{1}_{2}", tbl, month, year);
-        }
-
-        private string GetSQL()
-        {
-            string tbl = GetTableName(DateTime.Now, "DeviceLogs");
-            string sql = String.Format("select DeviceLogId,EmployeeCode,LogDate,Direction from {0},Employees where {0}.UserId=Employees.EmployeeId and {1} order by DeviceLogId", tbl, GetWhere(DateTime.Now));
-            return sql;
         }
 
         private string GetWhere(DateTime date)
@@ -86,7 +92,11 @@ namespace JISR_V1
             }
             else
             {
-                onlyIfFirstTime = String.Format("and  logDate between '{0}' and '{1}'", today.AddMinutes(-1), today);
+                //onlyIfFirstTime = String.Format("and  logDate between '{0}' and '{1}'", today.AddMinutes(-1), today);
+                if (this.lastSavedLogDate != null)
+                {
+                    onlyIfFirstTime = String.Format("and  logDate > '{0}'", this.lastSavedLogDate.Value); 
+                }
             }
 
             return String.Format("cast(logDate as date) = '{0}' {1}", today.ToShortDateString(), onlyIfFirstTime);
@@ -259,21 +269,19 @@ namespace JISR_V1
 
         #endregion
 
-        private void frmAttendance_MouseDoubleClick(object sender, MouseEventArgs e)
-        {
-            MessageBox.Show(GetSQL());
-        }
-
+        #region timer_tick for sending logData to api
         private void timer_Tick(object sender, EventArgs e)
         {
             // setup sql_data_adapter and get data
+            string sqlStatement = GetSQL();
+
             if (adapter == null)
             {
-                adapter = new SqlDataAdapter(GetSQL(), GetSqlConnection());
+                adapter = new SqlDataAdapter(sqlStatement, GetSqlConnection());
             }
             else
             {
-                adapter.SelectCommand.CommandText = GetSQL();
+                adapter.SelectCommand.CommandText = sqlStatement;
             }
 
             // fill data in dataset
@@ -288,6 +296,10 @@ namespace JISR_V1
 
                 // send data to api
                 SendAttendanceLogsToAPI(attendanceDataset.Tables[tableName]);
+
+                // save lastSavedLogDate
+                int rowsCount = attendanceDataset.Tables[tableName].Rows.Count;
+                this.lastSavedLogDate = Convert.ToDateTime(attendanceDataset.Tables[tableName].Rows[rowsCount - 1]["LogDate"]);
             }
             else
             {
@@ -316,7 +328,7 @@ namespace JISR_V1
 
                 if (attendanceDic["success"] == "true")
                 {
-                    lbxNotifications.Items.Add("Data sent successfully. records_updated: " + attendanceDic["records_updated"]);
+                    lbxNotifications.Items.Add(String.Format("Data sent successfully on {0}. records_updated: {1}", DateTime.Now, attendanceDic["records_updated"]));
                     this.isLoggedIn = true;
                 }
                 else
@@ -333,7 +345,8 @@ namespace JISR_V1
             foreach (DataRow row in AttendanceLogs.Rows)
             {
                 list.Add(
-                    new Record {
+                    new Record
+                    {
                         id = Convert.ToInt32(row["EmployeeCode"]),
                         day = Convert.ToDateTime(row["LogDate"]).ToString("MM/dd/yyyy"),
                         time = Convert.ToDateTime(row["LogDate"]).ToString("HH:mm"),
@@ -343,9 +356,12 @@ namespace JISR_V1
             }
 
             return list;
-        }
+        } 
+        #endregion
     }
 
+
+    #region model classes
     public class Login
     {
         public string login { get; set; }
@@ -358,5 +374,6 @@ namespace JISR_V1
         public string day { get; set; }
         public string time { get; set; }
         public string direction { get; set; }
-    }
+    } 
+    #endregion
 }

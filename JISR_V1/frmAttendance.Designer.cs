@@ -106,7 +106,6 @@
             this.Name = "frmAttendance";
             this.Text = "JISR Attendance";
             this.Load += new System.EventHandler(this.frmAttendance_Load);
-            this.MouseDoubleClick += new System.Windows.Forms.MouseEventHandler(this.frmAttendance_MouseDoubleClick);
             this.ResumeLayout(false);
 
         }
