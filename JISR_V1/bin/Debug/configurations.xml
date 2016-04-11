@@ -6,5 +6,6 @@
     <BaseAddress>http://api.dev.arbab.clicksandbox.com/v1/</BaseAddress>
     <Login>varun@clickapps.co</Login>
     <Password>varun</Password>
+    <TimerInterval>60000</TimerInterval>
   </Attendance>
 </Configurations>

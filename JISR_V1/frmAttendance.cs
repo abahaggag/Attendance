@@ -50,6 +50,9 @@ namespace JISR_V1
             // Initialize Connection and DataSet
             if (connection == null) connection = GetSqlConnection();
             if (attendanceDataset == null) attendanceDataset = new DataSet();
+
+            // Initialize Timer Interval
+            timer.Interval = Configurations.TimerInterval;
         }
         #endregion
 
@@ -389,6 +392,7 @@ namespace JISR_V1
         public static string BaseAddress { get; set; }
         public static string Login { get; set; }
         public static string Password { get; set; }
+        public static int TimerInterval { get; set; }
         private static XElement configurations { get; set; }
         public static void Load()
         {
@@ -402,6 +406,7 @@ namespace JISR_V1
                 ConnectionString = attendance.Element("ConnectionString").Value;
                 Login = attendance.Element("Login").Value;
                 Password = attendance.Element("Password").Value;
+                TimerInterval = Convert.ToInt32(attendance.Element("TimerInterval").Value);
             }
             catch (Exception ex)
             {
