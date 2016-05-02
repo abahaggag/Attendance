@@ -43,6 +43,9 @@ namespace JISR_V1
         {
             // Load Configurations from xml file
             Configurations.Load();
+            this.lastSavedLogDate = Configurations.LastSavedDate;
+            this.isFirstCalled = this.lastSavedLogDate == null ? true : false;
+
 
             // Check if saved AccessToken is valid
             PingAPI();
@@ -71,6 +74,7 @@ namespace JISR_V1
 
         private string GetSQL()
         {
+            //DateTime temp = new DateTime(2016, 04, 29);
             string tbl = GetTableName(DateTime.Now, "DeviceLogs");
             string sql = String.Format("select DeviceLogId,EmployeeCode,LogDate,Direction from {0},Employees where {0}.UserId=Employees.EmployeeId and {1} order by DeviceLogId", tbl, GetWhere(DateTime.Now));
             return sql;
@@ -274,69 +278,83 @@ namespace JISR_V1
         #region Timer_tick for sending logData to api
         private void timer_Tick(object sender, EventArgs e)
         {
-            // setup sql_data_adapter and get data
-            string sqlStatement = GetSQL();
-
-            if (adapter == null)
+            try
             {
-                adapter = new SqlDataAdapter(sqlStatement, GetSqlConnection());
+                // setup sql_data_adapter and get data
+                string sqlStatement = GetSQL();
+
+                if (adapter == null)
+                {
+                    adapter = new SqlDataAdapter(sqlStatement, GetSqlConnection());
+                }
+                else
+                {
+                    adapter.SelectCommand.CommandText = sqlStatement;
+                }
+
+                // fill data in dataset
+                attendanceDataset.Reset();
+                adapter.Fill(attendanceDataset, tableName);
+
+                // check if there are data need to be sent to api
+                if (attendanceDataset.Tables[tableName].Rows.Count > 0)
+                {
+                    // add notification to lbxNotifications
+                    lbxNotifications.Items.Add("attendance logs to be sent to api: " + attendanceDataset.Tables[tableName].Rows.Count);
+
+                    // send data to api
+                    SendAttendanceLogsToAPI(attendanceDataset.Tables[tableName]);
+
+                    // save lastSavedLogDate
+                    int rowsCount = attendanceDataset.Tables[tableName].Rows.Count;
+                    this.lastSavedLogDate = Convert.ToDateTime(attendanceDataset.Tables[tableName].Rows[rowsCount - 1]["LogDate"]);
+                    Configurations.Save("LastSavedDate", this.lastSavedLogDate.ToString());
+                }
+                else
+                {
+                    lbxNotifications.Items.Add("no new attendance logs. no data sent to api on " + DateTime.Now);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                adapter.SelectCommand.CommandText = sqlStatement;
-            }
-
-            // fill data in dataset
-            attendanceDataset.Reset();
-            adapter.Fill(attendanceDataset, tableName);
-
-            // check if there are data need to be sent to api
-            if (attendanceDataset.Tables[tableName].Rows.Count > 0)
-            {
-                // add notification to lbxNotifications
-                lbxNotifications.Items.Add("attendance logs to be sent to api: " + attendanceDataset.Tables[tableName].Rows.Count);
-
-                // send data to api
-                SendAttendanceLogsToAPI(attendanceDataset.Tables[tableName]);
-
-                // save lastSavedLogDate
-                int rowsCount = attendanceDataset.Tables[tableName].Rows.Count;
-                this.lastSavedLogDate = Convert.ToDateTime(attendanceDataset.Tables[tableName].Rows[rowsCount - 1]["LogDate"]);
-            }
-            else
-            {
-                lbxNotifications.Items.Add("no new attendance logs. no data sent to api on " + DateTime.Now);
+                lbxNotifications.Items.Add("Error occurs in Timer_Tick: " + ex.Message);
             }
         }
 
         private async void SendAttendanceLogsToAPI(DataTable AttendanceLogs)
         {
-            // map attendance logs as needed in api params
-            List<Record> logsList = MapLogsToApiParams(AttendanceLogs);
-            dynamic logsListWarper = new { record = logsList };
-
-            // serialize logs to json
-            var logsSerialized = await JsonConvert.SerializeObjectAsync(logsListWarper);
-
-            // send logs to api
-            using (var client = new HttpClient())
+            try
             {
-                client.BaseAddress = new Uri(Configurations.BaseAddress);
-                var content = new StringContent(logsSerialized, Encoding.UTF8, "application/json");
-                var result = await client.PostAsync("device_attendances?access_token=" + Configurations.AccessToken, content);
+                // map attendance logs as needed in api params
+                List<Record> logsList = MapLogsToApiParams(AttendanceLogs);
+                dynamic logsListWarper = new { record = logsList };
 
-                var attendanceJsonResult = await result.Content.ReadAsStringAsync();
-                var attendanceDic = JsonConvert.DeserializeObject<Dictionary<string, string>>(attendanceJsonResult);
+                // serialize logs to json
+                var logsSerialized = await JsonConvert.SerializeObjectAsync(logsListWarper);
 
-                if (attendanceDic["success"] == "true")
+                // send logs to api
+                using (var client = new HttpClient())
                 {
-                    lbxNotifications.Items.Add(String.Format("Data sent successfully on {0}. records_updated: {1}", DateTime.Now, attendanceDic["records_updated"]));
-                    this.isLoggedIn = true;
+                    client.BaseAddress = new Uri(Configurations.BaseAddress);
+                    var content = new StringContent(logsSerialized, Encoding.UTF8, "application/json");
+                    var result = await client.PostAsync("device_attendances?access_token=" + Configurations.AccessToken, content);
+
+                    var attendanceJsonResult = await result.Content.ReadAsStringAsync();
+                    var attendanceDic = JsonConvert.DeserializeObject<Dictionary<string, string>>(attendanceJsonResult);
+
+                    if (attendanceDic["success"] == "true")
+                    {
+                        lbxNotifications.Items.Add(String.Format("Data sent successfully on {0}. records_updated: {1}", DateTime.Now, attendanceDic["records_updated"]));
+                    }
+                    else
+                    {
+                        lbxNotifications.Items.Add(attendanceDic["error"]);
+                    }
                 }
-                else
-                {
-                    lbxNotifications.Items.Add(attendanceDic["error"]);
-                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error occurs in SendAttendanceLogsToAPI method: " + ex.Message);
             }
         }
 
@@ -393,6 +411,7 @@ namespace JISR_V1
         public static string Login { get; set; }
         public static string Password { get; set; }
         public static int TimerInterval { get; set; }
+        public static DateTime? LastSavedDate { get; set; }
         private static XElement configurations { get; set; }
         public static void Load()
         {
@@ -407,6 +426,10 @@ namespace JISR_V1
                 Login = attendance.Element("Login").Value;
                 Password = attendance.Element("Password").Value;
                 TimerInterval = Convert.ToInt32(attendance.Element("TimerInterval").Value);
+                
+                string strDate = attendance.Element("LastSavedDate").Value;
+                DateTime tempDate;
+                LastSavedDate = DateTime.TryParse(strDate, out tempDate)? tempDate : (DateTime?)null;
             }
             catch (Exception ex)
             {

@@ -1,11 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Configurations>
   <Attendance>
-    <AccessToken>4d82588cf84225b307554830858d1b41</AccessToken>
+    <AccessToken>38f6bbb982a79f660239ad1a5c87ec9d</AccessToken>
     <ConnectionString>server=.\mssql;uid=sa;pwd=123;database=eSSLSmartOffice</ConnectionString>
     <BaseAddress>http://api.dev.arbab.clicksandbox.com/v1/</BaseAddress>
-    <Login>varun@clickapps.co</Login>
-    <Password>varun</Password>
+    <Login>master@clickapps.co</Login>
+    <Password>click227</Password>
     <TimerInterval>60000</TimerInterval>
+    <LastSavedDate>5/2/2016 10:33:34 AM</LastSavedDate>
   </Attendance>
 </Configurations>
