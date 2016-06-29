@@ -91,7 +91,7 @@ namespace JISR_V1
         private string GetWhere(DateTime date)
         {
             DateTime today = Convert.ToDateTime(date.ToString(new CultureInfo("en-US")));
-            string onlyIfFirstTime = "";
+            /*string onlyIfFirstTime = "";
 
             if (this.isFirstCalled)
             {
@@ -104,9 +104,18 @@ namespace JISR_V1
                 {
                     onlyIfFirstTime = String.Format("and  logDate > '{0}'", this.lastSavedLogDate.Value);
                 }
-            }
+            }*/
 
-            return String.Format("cast(logDate as date) = '{0}' {1}", today.ToShortDateString(), onlyIfFirstTime);
+            //return String.Format("cast(logDate as date) = '{0}' {1}", today.ToShortDateString(), onlyIfFirstTime);
+            if (this.lastSavedLogDate != null)
+            {
+                return String.Format("logDate > '{0}'", this.lastSavedLogDate.Value);
+            }
+            else
+            {
+                return String.Format("cast(logDate as date) = '{0}'", today.ToShortDateString());
+            }
+            
         }
         #endregion
 
